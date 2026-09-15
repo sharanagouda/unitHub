@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// Storage paths mirror Firestore ownership so the two cannot drift apart.
+//   properties/{propertyId}/units/{unitId}/{file}
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /properties/{propertyId}/{allPaths=**} {
+      // Listing photos are public; everything else requires auth. Split the
+      // paths so a repair photo can never be served from a listing URL.
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

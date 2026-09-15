@@ -1,0 +1,139 @@
+rules_version = '2';
+
+// UnitHub — authorization model
+//
+// Two principles drive this file:
+//  1. Every root document carries `ownerId` (and `tenancyId` where relevant)
+//     so a rule never needs a get() lookup. A get() is a billed read, on every
+//     evaluation, forever.
+//  2. `listings` is a PROJECTION of a unit, not a reference to one. Public
+//     read is granted on listings and nothing else, which makes PRD Rule 8
+//     ("expose only what the owner published") structural rather than a
+//     promise made in application code.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- helpers ---------------------------------------------------------
+    function signedIn() {
+      return request.auth != null;
+    }
+    function uid() {
+      return request.auth.uid;
+    }
+    function ownsExisting() {
+      return signedIn() && resource.data.ownerId == uid();
+    }
+    function ownsIncoming() {
+      return signedIn() && request.resource.data.ownerId == uid();
+    }
+    function isTenantOf(data) {
+      return signedIn() && data.tenantUserId == uid();
+    }
+    function unchanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // --- users -----------------------------------------------------------
+    match /users/{userId} {
+      allow read: if signedIn() && userId == uid();
+      allow create: if signedIn() && userId == uid();
+      // `roles` is server-controlled: a client must not be able to grant
+      // itself the tenant role and then claim a tenancy.
+      allow update: if signedIn() && userId == uid()
+                    && !('roles' in changedKeys());
+      allow delete: if false; // account deletion goes through a callable
+    }
+
+    // --- properties / floors / units -------------------------------------
+    match /properties/{propertyId} {
+      allow read, write: if ownsExisting() || ownsIncoming();
+
+      match /floors/{floorId} {
+        allow read, write: if signedIn()
+          && get(/databases/$(database)/documents/properties/$(propertyId)).data.ownerId == uid();
+      }
+      match /units/{unitId} {
+        allow read, write: if signedIn()
+          && get(/databases/$(database)/documents/properties/$(propertyId)).data.ownerId == uid();
+      }
+      // Aggregates for the dashboard. Written only by Cloud Functions, so the
+      // owner cannot fabricate a collection total.
+      match /summaries/{periodKey} {
+        allow read: if signedIn()
+          && get(/databases/$(database)/documents/properties/$(propertyId)).data.ownerId == uid();
+        allow write: if false;
+      }
+    }
+
+    // --- tenancies -------------------------------------------------------
+    match /tenancies/{tenancyId} {
+      allow read: if ownsExisting() || isTenantOf(resource.data);
+      allow create: if ownsIncoming() && request.resource.data.tenantUserId == null;
+
+      // Owner may edit tenancy details but never assign tenantUserId directly.
+      allow update: if ownsExisting() && ownsIncoming() && unchanged('tenantUserId');
+
+      // The tenant invite claim (PRD §59). Firebase Auth has already proven
+      // this uid controls the phone number, so the match below is a binding,
+      // not a guess. Tightened further by the callable, which also enforces
+      // invite-token expiry — see docs/tenant-claim.md.
+      allow update: if signedIn()
+                    && resource.data.tenantUserId == null
+                    && resource.data.status == 'active'
+                    && request.auth.token.phone_number == resource.data.tenantPhone
+                    && request.resource.data.tenantUserId == uid()
+                    && changedKeys().hasOnly(['tenantUserId', 'claimedAt']);
+
+      allow delete: if false; // Rule 6: move-out must not delete history
+    }
+
+    // --- rent ------------------------------------------------------------
+    match /rentPeriods/{periodId} {
+      allow read: if ownsExisting()
+                  || (signedIn() && resource.data.tenantUserId == uid());
+      allow create, update: if ownsIncoming();
+      allow delete: if false;
+    }
+
+    match /rentPayments/{paymentId} {
+      allow read: if ownsExisting()
+                  || (signedIn() && resource.data.tenantUserId == uid());
+      allow create: if ownsIncoming();
+
+      // Rules 3 and 5: payments are immutable from the client. A correction is
+      // a server-written reversal plus an audit event, never an edit in place.
+      allow update, delete: if false;
+    }
+
+    match /auditEvents/{eventId} {
+      allow read: if ownsExisting();
+      allow write: if false; // server only
+    }
+
+    // --- repairs ---------------------------------------------------------
+    match /repairs/{repairId} {
+      allow read: if ownsExisting()
+                  || (signedIn() && resource.data.tenantUserId == uid());
+      allow create: if ownsIncoming()
+                    || (signedIn() && request.resource.data.reportedByUid == uid());
+      allow update: if ownsExisting();
+      allow delete: if false; // Rule 7: repair history survives vacancy
+    }
+
+    // --- listings (the only publicly readable collection) ----------------
+    match /listings/{listingId} {
+      allow read: if resource.data.status == 'published';
+      allow create, update: if ownsIncoming();
+      allow delete: if ownsExisting();
+    }
+
+    // Default deny.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

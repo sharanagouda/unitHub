@@ -1,5 +1,27 @@
 {
   "extends": "@react-native/typescript-config",
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["**/node_modules", "**/Pods"]
+  "compilerOptions": {
+    "types": ["jest", "node"],
+
+    /* Beyond the RN preset's `strict: true` — these three catch real bugs in
+       a ledger app: unchecked array access, silently-dropped optional props,
+       and unsound array method callbacks. */
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    "paths": {
+      "@domain/*": ["./src/domain/*"],
+      "@data/*": ["./src/data/*"],
+      "@features/*": ["./src/features/*"],
+      "@ui/*": ["./src/ui/*"],
+      "@navigation/*": ["./src/navigation/*"],
+      "@lib/*": ["./src/lib/*"]
+    }
+  },
+  "include": ["./src/**/*.ts", "src/**/*.tsx", "*.ts", "*.tsx", "__tests__/**/*"],
+  "exclude": ["node_modules", "ios/Pods", "android", "functions"]
 }

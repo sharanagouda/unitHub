@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "module": "node16",
+    "moduleResolution": "node16",
+    "isolatedModules": true,
+    "target": "es2022",
+    "lib": ["es2022"],
+    "types": ["node", "jest"],
+    "outDir": "lib",
+    "rootDir": "src",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "sourceMap": true
+  },
+  "include": ["src"],
+  // Test files are still fully type-checked — ts-jest resolves this same
+  // config when running `npm test`. Excluding them here just keeps the
+  // deployed `lib/` build (and plain `tsc --noEmit`) free of test code.
+  "exclude": ["src/**/*.test.ts"]
+}
