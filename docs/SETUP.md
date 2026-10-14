@@ -18,6 +18,45 @@ Bare React Native 0.87.1 / React 19.2.3 / TypeScript 6, `@react-native-firebase`
   see its `exclude` in the root `tsconfig.json`) implementing
   `createTenantInvite` and `claimTenantInvite` — see docs/tenant-claim.md and
   the "tenant invite" decisions in docs/DECISIONS.md
+- Navigation + auth shell: phone OTP sign-in, a role-based router (owner /
+  tenant / dual-role switcher) in `src/navigation`, and the bootstrap logic in
+  `src/lib/useAuthBootstrap.ts` that decides owner self-serve vs. invite claim
+  — see DECISIONS.md #9. `App.tsx` now renders this instead of the RN
+  boilerplate screen. Deep-link *parsing* is unit-tested
+  (`src/lib/inviteLink.ts`); the native URL-scheme registration that lets the
+  OS hand a `unithub://` link to the app is not — see DECISIONS.md #9.
+- Jest mocks `@react-native-firebase/{auth,firestore,functions}` and
+  `react-native-mmkv` (`__mocks__/`) so the `app` project can render the real
+  `App.tsx` without hitting native modules, the firebase-js-sdk web fallback,
+  or `react-native-nitro-modules` — see each mock file's own comment for why
+  each one needed it (the mmkv one in particular: its own `isTest()` Jest
+  auto-mock doesn't work, see that file)
+- A themed design system in `src/ui`: light/dark color tokens (never a raw
+  hex in a screen — grep for one, there's none left), spacing/typography
+  scales, a `ThemeProvider` (explicit override, persisted via
+  `react-native-mmkv`, falling back to the system scheme), and the primitives
+  screens actually use (`Screen`, `ThemedText`, `ThemedButton`, `Card`,
+  `ListRow`, `EmptyState`, `Badge`, `ThemeToggle`)
+- Real owner/tenant screens: a tenancy list (`OwnerHomeScreen`,
+  `TenantHomeScreen` — the latter auto-opens the ledger when there's exactly
+  one tenancy, else shows the switcher tenant-claim.md describes) and a
+  `LedgerScreen` that subscribes to a tenancy's rent periods + payments,
+  runs the existing `computeLedger` on them, and offers "export history" /
+  "share statement" through the OS share sheet — see DECISIONS.md #11 for
+  why share-based and not a real file, and #10 for the access-expiry rule
+  this screen's read access now depends on
+- `src/domain/export/{csv,statement}.ts`: pure formatters backing the export
+  above — CSV escaping, plain-decimal amounts for spreadsheet import, and a
+  deliberately unnumbered per-period statement (DECISIONS.md #12)
+- Component tests for the three new screens
+  (`src/features/{owner,tenant,tenancy}/**/__tests__`) against a small fake
+  Firestore (`src/features/testUtils/fakeFirestore.ts`) — covering loading/
+  empty/error states, paid/partial/pending/credit ledgers, mixed cash+UPI
+  payments, and the tenant unit-switcher. Built on bare `react-test-renderer`
+  (already a dependency), not `@testing-library/react-native` (not
+  installed) — a predicate-based `root.find(...)` turned out to be the
+  reliable way to locate a `Pressable` here; `findAllByType(Pressable)`
+  came up empty under this RN/test-renderer combination
 
 ## Scripts
 
@@ -26,6 +65,9 @@ Bare React Native 0.87.1 / React 19.2.3 / TypeScript 6, `@react-native-firebase`
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test:domain` | rent engine tests (pure node, ~0.5s) |
 | `npm run test:data` | data-layer schema/converter tests (pure node) |
+| `npm run test:lib` | `src/lib`'s pure-logic tests, e.g. invite-link parsing (pure node) |
+| `npm run test:ui` | `resolveTheme`/token tests (pure node) |
+| `npx jest --selectProjects app` | renders `App.tsx` + the owner/tenant/ledger screens against the `__mocks__/` |
 | `npm run test:watch` | the domain tests, in watch mode |
 | `npm run test:rules` | security rules against the Firestore emulator |
 | `npm run emulators` | full emulator suite + UI on :4000 |
@@ -134,14 +176,20 @@ Needed before `npm run emulators` will actually serve `createTenantInvite` /
 
 ```
 src/
-  domain/      pure TS. money, dates, ids, types, rent/. No Firebase, no React.
+  domain/      pure TS. money, dates, ids, types, rent/, export/ (CSV + statement
+               formatters). No Firebase, no React.
   data/        firestore refs, zod schemas, converters, useDoc/useCollection
-  features/    owner/ tenant/ public/
-  ui/          design system
-  navigation/  typed param lists, deep links, role router
-  lib/         analytics, errors, formatting
+  features/    auth/ owner/ tenant/ tenancy/ (TenancyListView, LedgerScreen) —
+               public/ and any create/edit form (add tenant, record a payment)
+               not started; testUtils/ (fakeFirestore, fixtures) is test-only
+  ui/          theme tokens (colors/spacing/typography), ThemeProvider, and the
+               primitive components screens are built from
+  navigation/  RootNavigator/AuthNavigator/AppNavigator, typed param lists
+  lib/         auth + functions singletons, the auth bootstrap decision tree,
+               deep-link parsing — analytics/errors/formatting are still to add
 tests/rules/   security rules tests
 functions/     Cloud Functions — its own npm package, deployed separately
+__mocks__/     manual Jest mocks for native modules jest can't run for real
 docs/
 ```
 

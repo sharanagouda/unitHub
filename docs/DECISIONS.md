@@ -95,7 +95,91 @@ gets it. `functions/`'s two callables make that concrete:
   pre-existing `claimedAt`. None affect rent math, so — like `claimedAt` —
   none live on the domain `Tenancy` type; see `src/data/schemas/tenancy.ts`.
 
-## 9. Still open — decide before the schema hardens
+## 9. A bare sign-in always becomes an owner
+
+docs/tenant-claim.md establishes that there's no tenant signup, only owner
+self-serve and invite claiming — but not what happens when someone opens the
+app and signs in with no invite link in hand. Decided: they become an owner.
+`useAuthBootstrap` (`src/lib/useAuthBootstrap.ts`) creates `users/{uid}` with
+`roles: ['owner']` right after phone OTP verifies, *unless* a deep link
+captured an invite first (`usePendingInviteStore`), in which case the invite
+always wins and `claimTenantInvite` runs instead — regardless of whether the
+caller already has a user doc, which is what makes "owner who is also a
+tenant" just work without special-casing it.
+
+One consequence: tenant-claim.md's "No rental linked yet" empty state is
+reachable only when a captured invite's `claimTenantInvite` call itself
+fails (expired/invalid token, phone mismatch) — a bare sign-in can no longer
+land there, since it now always gets the owner role. `AppNavigator` still
+renders that copy for the (now closer to unreachable) zero-roles case.
+
+Not yet wired: the native side of deep linking. `src/lib/inviteLink.ts`
+parses a `unithub://invite?tenancyId=...&token=...` URL and is unit-tested,
+but nothing registers that scheme with iOS (`Info.plist`
+`CFBundleURLTypes`) or Android (`AndroidManifest.xml` intent-filter) yet, so
+the OS doesn't actually hand such a link to the app. Left for when
+docs/SETUP.md's Firebase native wiring happens, since there's no buildable
+config to verify either change against before then.
+
+## 10. A moved-out tenant's read access actually expires now
+
+docs/tenant-claim.md already described the intent — "Tenant moves out →
+Read-only access retained ~12 months — they need old receipts for HRA
+claims" — but `firestore.rules` never enforced it: `isTenantOf` was a bare
+`tenantUserId == uid()` match with no time bound, so an ended tenancy's
+access was in practice indefinite, not 12 months. Confirmed with the user
+when building the ledger screen: keep the 12-month retention, but make it
+real.
+
+`accessExpiresAt: Timestamp | null` is now denormalized onto `TenancyDoc`,
+`RentPeriodDoc` and `PaymentDoc` (null while active), the same way
+`ownerId`/`tenantUserId` already are — so `isTenantOf()` can check it with a
+plain field comparison, never a `get()` on the parent tenancy:
+
+```
+function isTenantOf(data) {
+  return signedIn() && data.tenantUserId == uid()
+    && (data.get('accessExpiresAt', null) == null
+        || request.time < data.get('accessExpiresAt', null));
+}
+```
+
+**Nothing sets this field to a non-null value yet.** There is no "end a
+tenancy" action anywhere in the app — that's deferred CRUD, same as "add
+tenant" and "record payment". Whatever eventually implements it must, in one
+write: set the tenancy's `status` to `'ended'` and `accessExpiresAt` to
+`moveOutDate + 365 days`, *and* backfill the same `accessExpiresAt` onto
+every one of that tenancy's existing `rentPeriods`/`rentPayments` docs — a
+tenancy-level change that doesn't also touch its children would leave them
+readable (or unreadable) out of sync with the parent. `tests/rules/
+firestore.test.ts`'s "tenant access expiry" block is the executable spec for
+this — active / ended-within-window / ended-past-window / owner-is-never-
+limited — any future implementation should keep passing it unmodified.
+
+## 11. Export and receipts go through the OS share sheet, not a real file
+
+"Export history as Excel" and "receipt for the month" both resolve to a
+string (`src/domain/export/csv.ts`, `src/domain/export/statement.ts`) handed
+to React Native's built-in `Share.share()` — not a written `.xlsx`/PDF file.
+Confirmed with the user rather than assumed: this checkout has never run
+`pod install` (no `Podfile.lock`), so a new native dependency
+(`react-native-share`, a PDF generator) can't be linking-verified here, and
+that's exactly the kind of failure that only surfaces later, on a real
+device. `Share.share` is a core RN API — zero new dependencies, fully
+testable now (`LedgerScreen.test.tsx` spies on it directly).
+
+The CSV is plain decimal rupees, not `formatINR`'s grouped `₹` string — a
+spreadsheet needs to parse that column as a number once the recipient saves
+the shared text as a `.csv`. The per-period statement deliberately never
+includes anything receipt-number-shaped (`UH-YYYYMMDD-NNN` from PRD §40);
+#13's receipt-numbering question is still open, and a statement that looked
+officially numbered would misrepresent that as settled (see #12's receipt-
+numbering bullet, below).
+
+Revisit this once real `.xlsx`/PDF output actually matters — on a device,
+where `pod install`/a Gradle build can confirm a new library links at all.
+
+## 12. Still open — decide before the schema hardens
 
 - **PG / multiple occupants.** PRD Rule 1 says one active tenancy per unit; §54
   says support PG-style rooms. Those conflict. Either PG is out of scope, or

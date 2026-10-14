@@ -1,8 +1,11 @@
 import {
   collection,
   doc,
+  query,
+  where,
   type CollectionReference,
   type DocumentReference,
+  type Query,
 } from '@react-native-firebase/firestore';
 import type { PaymentId, RentPeriodId, TenancyId, UserId } from '@domain/ids';
 import { docConverter } from './converter';
@@ -32,6 +35,17 @@ export const tenanciesCol = (): CollectionReference<TenancyDoc> =>
 export const tenancyDocRef = (id: TenancyId): DocumentReference<TenancyDoc> =>
   doc(tenanciesCol(), id);
 
+/** An owner's tenancies — active and ended both, so the owner's list can
+ *  show history, not just who's currently renting. Single-field equality,
+ *  no composite index needed. */
+export const tenanciesByOwner = (ownerId: UserId): Query<TenancyDoc> =>
+  query(tenanciesCol(), where('ownerId', '==', ownerId));
+
+/** A tenant's tenancies — docs/tenant-claim.md's "one phone, two units"
+ *  case: this can return more than one. */
+export const tenanciesByTenant = (tenantUserId: UserId): Query<TenancyDoc> =>
+  query(tenanciesCol(), where('tenantUserId', '==', tenantUserId));
+
 // --- rent periods --------------------------------------------------------
 
 export const rentPeriodsCol = (): CollectionReference<RentPeriodDoc> =>
@@ -40,6 +54,9 @@ export const rentPeriodsCol = (): CollectionReference<RentPeriodDoc> =>
 export const rentPeriodDocRef = (id: RentPeriodId): DocumentReference<RentPeriodDoc> =>
   doc(rentPeriodsCol(), id);
 
+export const rentPeriodsByTenancy = (tenancyId: TenancyId): Query<RentPeriodDoc> =>
+  query(rentPeriodsCol(), where('tenancyId', '==', tenancyId));
+
 // --- rent payments ---------------------------------------------------------
 
 export const rentPaymentsCol = (): CollectionReference<PaymentDoc> =>
@@ -47,3 +64,6 @@ export const rentPaymentsCol = (): CollectionReference<PaymentDoc> =>
 
 export const paymentDocRef = (id: PaymentId): DocumentReference<PaymentDoc> =>
   doc(rentPaymentsCol(), id);
+
+export const rentPaymentsByTenancy = (tenancyId: TenancyId): Query<PaymentDoc> =>
+  query(rentPaymentsCol(), where('tenancyId', '==', tenancyId));

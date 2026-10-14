@@ -23,6 +23,7 @@ function rawTenancy(over: Record<string, unknown> = {}) {
     inviteToken: null,
     inviteSentAt: null,
     claimedAt: null,
+    accessExpiresAt: null,
     ...over,
   };
 }
@@ -62,6 +63,13 @@ describe('tenancyDocSchema', () => {
     const raw = rawTenancy();
     delete (raw as Record<string, unknown>).createdAt;
     expect(() => tenancyDocSchema.parse(raw)).toThrow();
+  });
+
+  it('accepts an ended tenancy with an accessExpiresAt', () => {
+    const parsed = tenancyDocSchema.parse(
+      rawTenancy({ status: 'ended', moveOutDate: '2026-06-30', accessExpiresAt: fakeTimestamp('2027-06-30') }),
+    );
+    expect(parsed.accessExpiresAt?.toDate()).toEqual(new Date('2027-06-30'));
   });
 
   it('rejects an out-of-range dueDay', () => {

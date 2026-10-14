@@ -7,6 +7,7 @@ function rawPayment(over: Record<string, unknown> = {}) {
     tenancyId: 't1',
     ownerId: 'o1',
     tenantUserId: 'tenant1',
+    accessExpiresAt: null,
     amountPaise: 1_800_000,
     paidOn: '2026-03-12',
     method: 'upi',

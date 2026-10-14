@@ -5,6 +5,7 @@ import {
   zPeriodKey,
   zRentPeriodId,
   zTenancyId,
+  zTimestamp,
   zUserId,
 } from './primitives';
 
@@ -16,12 +17,17 @@ import {
  * `computeLedger` derives from payments. `@domain/rent/ledger`'s comment on
  * `computeLedger` is the source of truth this cache must agree with; it is
  * never itself the source of truth.
+ *
+ * `accessExpiresAt` mirrors `TenancyDoc`'s field of the same name (see its
+ * doc comment) — denormalized here too so `firestore.rules`' tenant-read
+ * check never needs a get() on the parent tenancy.
  */
 export const rentPeriodDocSchema = z.object({
   id: zRentPeriodId,
   tenancyId: zTenancyId,
   ownerId: zUserId,
   tenantUserId: zUserId.nullable(),
+  accessExpiresAt: zTimestamp.nullable(),
 
   key: zPeriodKey,
   from: zCalendarDate,

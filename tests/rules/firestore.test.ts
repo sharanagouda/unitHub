@@ -153,6 +153,73 @@ describe('tenant invite claim (§59)', () => {
   });
 });
 
+describe('tenant access expiry (docs/tenant-claim.md HRA retention)', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const FUTURE = new Date(Date.now() + 30 * DAY_MS);
+  const PAST = new Date(Date.now() - 30 * DAY_MS);
+
+  async function seedExpiry() {
+    await env.withSecurityRulesDisabled(async ctx => {
+      const db = ctx.firestore();
+
+      // t-active: still living there, no expiry.
+      await setDoc(doc(db, 'tenancies/t-active'), {
+        ownerId: OWNER_A, tenantUserId: TENANT, tenantPhone: TENANT_PHONE,
+        status: 'active', accessExpiresAt: null,
+      });
+      // t-ended-future: moved out, still inside the retention window.
+      await setDoc(doc(db, 'tenancies/t-ended-future'), {
+        ownerId: OWNER_A, tenantUserId: TENANT, tenantPhone: TENANT_PHONE,
+        status: 'ended', accessExpiresAt: FUTURE,
+      });
+      // t-ended-past: moved out, retention window has lapsed.
+      await setDoc(doc(db, 'tenancies/t-ended-past'), {
+        ownerId: OWNER_A, tenantUserId: TENANT, tenantPhone: TENANT_PHONE,
+        status: 'ended', accessExpiresAt: PAST,
+      });
+
+      for (const [tenancyId, accessExpiresAt] of [
+        ['t-active', null],
+        ['t-ended-future', FUTURE],
+        ['t-ended-past', PAST],
+      ] as const) {
+        await setDoc(doc(db, `rentPeriods/${tenancyId}_p1`), {
+          ownerId: OWNER_A, tenancyId, tenantUserId: TENANT, accessExpiresAt,
+        });
+        await setDoc(doc(db, `rentPayments/${tenancyId}_pay1`), {
+          ownerId: OWNER_A, tenancyId, tenantUserId: TENANT, accessExpiresAt,
+        });
+      }
+    });
+  }
+
+  beforeEach(seedExpiry);
+
+  it('a tenant reads an active tenancy, its periods and its payments', async () => {
+    await assertSucceeds(getDoc(doc(asTenant(), 'tenancies/t-active')));
+    await assertSucceeds(getDoc(doc(asTenant(), 'rentPeriods/t-active_p1')));
+    await assertSucceeds(getDoc(doc(asTenant(), 'rentPayments/t-active_pay1')));
+  });
+
+  it('a tenant still reads an ended tenancy inside the retention window', async () => {
+    await assertSucceeds(getDoc(doc(asTenant(), 'tenancies/t-ended-future')));
+    await assertSucceeds(getDoc(doc(asTenant(), 'rentPeriods/t-ended-future_p1')));
+    await assertSucceeds(getDoc(doc(asTenant(), 'rentPayments/t-ended-future_pay1')));
+  });
+
+  it('a tenant loses read access once the retention window lapses', async () => {
+    await assertFails(getDoc(doc(asTenant(), 'tenancies/t-ended-past')));
+    await assertFails(getDoc(doc(asTenant(), 'rentPeriods/t-ended-past_p1')));
+    await assertFails(getDoc(doc(asTenant(), 'rentPayments/t-ended-past_pay1')));
+  });
+
+  it("the owner's own access is never time-limited", async () => {
+    await assertSucceeds(getDoc(doc(asOwnerA(), 'tenancies/t-ended-past')));
+    await assertSucceeds(getDoc(doc(asOwnerA(), 'rentPeriods/t-ended-past_p1')));
+    await assertSucceeds(getDoc(doc(asOwnerA(), 'rentPayments/t-ended-past_pay1')));
+  });
+});
+
 describe('role escalation', () => {
   it('a user cannot grant themselves roles', async () => {
     await env.withSecurityRulesDisabled(async ctx => {

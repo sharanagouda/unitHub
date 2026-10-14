@@ -1,4 +1,4 @@
-import { calendarDate } from '../dates';
+import { calendarDate, formatCalendarDate, periodKey, periodKeyLabel } from '../dates';
 import { formatINR, rupees, ZERO } from '../money';
 import { asTenancyId, asUnitId, asUserId, asPaymentId } from '../ids';
 import { generateRentPeriods, rentOn } from '../rent/periods';
@@ -222,5 +222,17 @@ describe('calendar edge cases', () => {
     const t = tenancy({ moveOutDate: d('2026-04-30'), status: 'ended' });
     const periods = generateRentPeriods(t, d('2026-08-31'));
     expect(periods.map(p => p.key)).toEqual(['2026-03', '2026-04']);
+  });
+});
+
+describe('display formatting', () => {
+  it('formatCalendarDate renders "D Mon YYYY"', () => {
+    expect(formatCalendarDate(d('2026-03-05'))).toBe('5 Mar 2026');
+    expect(formatCalendarDate(d('2026-12-31'))).toBe('31 Dec 2026');
+  });
+
+  it('periodKeyLabel renders "Month YYYY"', () => {
+    expect(periodKeyLabel(periodKey('2026-03'))).toBe('March 2026');
+    expect(periodKeyLabel(periodKey('2026-12'))).toBe('December 2026');
   });
 });

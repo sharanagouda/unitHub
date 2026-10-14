@@ -12,6 +12,14 @@ import { zCalendarDate, zPaise, zTenancyId, zTimestamp, zUnitId, zUserId } from 
  *                     callable; `inviteToken` is opaque and only ever
  *                     compared server-side, never parsed client-side.
  *   - `claimedAt`   — set by `claimTenantInvite` when the tenant claims.
+ *   - `accessExpiresAt` — null while active; a Timestamp ~12 months after
+ *                     move-out once code transitions the tenancy to
+ *                     'ended' — see docs/DECISIONS.md #9, which also flags
+ *                     that nothing sets this yet (that transition itself is
+ *                     deferred CRUD). `firestore.rules`' `isTenantOf` is
+ *                     what actually enforces this; it must stay denormalized
+ *                     here (and onto rentPeriods/rentPayments) rather than
+ *                     looked up, so a rule never needs a get().
  *
  * `TenancyDoc` is still a structural superset of `Tenancy`, so it can be
  * passed anywhere a domain `Tenancy` is expected (generateRentPeriods,
@@ -47,6 +55,7 @@ export const tenancyDocSchema = z.object({
   inviteToken: z.string().nullable(),
   inviteSentAt: zTimestamp.nullable(),
   claimedAt: zTimestamp.nullable(),
+  accessExpiresAt: zTimestamp.nullable(),
 });
 
 export type TenancyDoc = z.infer<typeof tenancyDocSchema>;

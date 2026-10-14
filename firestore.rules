@@ -27,8 +27,16 @@ service cloud.firestore {
     function ownsIncoming() {
       return signedIn() && request.resource.data.ownerId == uid();
     }
+    // Gated on accessExpiresAt so a moved-out tenant's read access actually
+    // lapses — docs/tenant-claim.md's ~12-month HRA-receipt retention window,
+    // not the indefinite access a bare tenantUserId match would give. null
+    // (active tenancy, or a legacy doc predating this field) means no
+    // expiry. .get() with a default avoids an eval error on a doc written
+    // before this field existed.
     function isTenantOf(data) {
-      return signedIn() && data.tenantUserId == uid();
+      return signedIn() && data.tenantUserId == uid()
+             && (data.get('accessExpiresAt', null) == null
+                 || request.time < data.get('accessExpiresAt', null));
     }
     function unchanged(field) {
       return request.resource.data[field] == resource.data[field];
@@ -93,15 +101,13 @@ service cloud.firestore {
 
     // --- rent ------------------------------------------------------------
     match /rentPeriods/{periodId} {
-      allow read: if ownsExisting()
-                  || (signedIn() && resource.data.tenantUserId == uid());
+      allow read: if ownsExisting() || isTenantOf(resource.data);
       allow create, update: if ownsIncoming();
       allow delete: if false;
     }
 
     match /rentPayments/{paymentId} {
-      allow read: if ownsExisting()
-                  || (signedIn() && resource.data.tenantUserId == uid());
+      allow read: if ownsExisting() || isTenantOf(resource.data);
       allow create: if ownsIncoming();
 
       // Rules 3 and 5: payments are immutable from the client. A correction is

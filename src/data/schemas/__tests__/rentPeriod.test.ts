@@ -7,6 +7,7 @@ function rawRentPeriod(over: Record<string, unknown> = {}) {
     tenancyId: 't1',
     ownerId: 'o1',
     tenantUserId: null,
+    accessExpiresAt: null,
     key: '2026-03',
     from: '2026-03-12',
     to: '2026-03-31',

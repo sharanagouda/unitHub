@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test:domain": "jest --selectProjects domain",
     "test:data": "jest --selectProjects data",
+    "test:lib": "jest --selectProjects lib",
+    "test:ui": "jest --selectProjects ui",
     "test:watch": "jest --selectProjects domain --watch",
     "test:rules": "JH=$(/usr/libexec/java_home -v 21+) && PATH=$JH/bin:$PATH JAVA_HOME=$JH firebase emulators:exec --only firestore --project demo-unithub \"jest --selectProjects rules\"",
     "emulators": "JH=$(/usr/libexec/java_home -v 21+) && PATH=$JH/bin:$PATH JAVA_HOME=$JH firebase emulators:start --project demo-unithub",

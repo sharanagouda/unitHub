@@ -125,3 +125,32 @@ export function dueDateInMonth(k: PeriodKey, dueDay: number): CalendarDate {
   const m = +k.slice(5, 7);
   return fmt(y, m, Math.min(Math.max(dueDay, 1), daysInMonth(y, m)));
 }
+
+// --- display formatting ---
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+] as const;
+
+/**
+ * Hand-rolled rather than `Intl.DateTimeFormat` — Hermes' Intl support
+ * depends on which ICU data got bundled, and isn't guaranteed consistent
+ * across Android builds (the same concern `money.ts` documents for en-IN
+ * digit grouping). "5 Mar 2026".
+ */
+export function formatCalendarDate(d: CalendarDate): string {
+  const { y, m, day } = parts(d);
+  const monthName = MONTH_NAMES[m - 1];
+  if (!monthName) throw new Error(`Invalid month in CalendarDate "${d}"`);
+  return `${day} ${monthName.slice(0, 3)} ${y}`;
+}
+
+/** "March 2026". */
+export function periodKeyLabel(k: PeriodKey): string {
+  const y = +k.slice(0, 4);
+  const m = +k.slice(5, 7);
+  const monthName = MONTH_NAMES[m - 1];
+  if (!monthName) throw new Error(`Invalid month in PeriodKey "${k}"`);
+  return `${monthName} ${y}`;
+}

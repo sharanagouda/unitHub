@@ -6,6 +6,7 @@ import {
   zPaymentId,
   zRentPeriodId,
   zTenancyId,
+  zTimestamp,
   zUserId,
 } from './primitives';
 
@@ -14,6 +15,9 @@ const rawPaymentDocSchema = z.object({
   tenancyId: zTenancyId,
   ownerId: zUserId,
   tenantUserId: zUserId.nullable(),
+  // Mirrors TenancyDoc's field of the same name — see its doc comment.
+  // Denormalized so firestore.rules' tenant-read check never needs a get().
+  accessExpiresAt: zTimestamp.nullable(),
 
   amountPaise: zPaise,
   paidOn: zCalendarDate,
